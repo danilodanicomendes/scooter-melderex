@@ -31,21 +31,26 @@ export default {
 
       const response = await fetch(proxyReq);
 
-      // Build response headers — rewrite Set-Cookie to remove Domain restriction
+      // Build response headers — rewrite Set-Cookie to remove Domain restriction.
+      // Laravel sends multiple Set-Cookie headers (XSRF-TOKEN + session); entries()
+      // would coalesce them into one comma-joined string, so use getSetCookie()
+      // to handle each cookie individually.
       const resHeaders = new Headers();
 
       for (const [key, value] of response.headers.entries()) {
-        if (key.toLowerCase() === 'set-cookie') {
-          // Strip Domain=..., SameSite=Strict/Lax (replace with None), add Secure
-          const rewritten = value
-            .replace(/;\s*Domain=[^;]*/gi, '')
-            .replace(/;\s*SameSite=\w+/gi, '; SameSite=None')
-            .replace(/;\s*Secure/gi, '')   // remove first, then re-add once
-            + '; Secure';
-          resHeaders.append('Set-Cookie', rewritten);
-        } else {
+        if (key.toLowerCase() !== 'set-cookie') {
           resHeaders.append(key, value);
         }
+      }
+
+      for (const cookie of response.headers.getSetCookie()) {
+        // Strip Domain=..., SameSite=Strict/Lax (replace with None), add Secure
+        const rewritten = cookie
+          .replace(/;\s*Domain=[^;]*/gi, '')
+          .replace(/;\s*SameSite=\w+/gi, '; SameSite=None')
+          .replace(/;\s*Secure/gi, '')   // remove first, then re-add once
+          + '; Secure';
+        resHeaders.append('Set-Cookie', rewritten);
       }
 
       resHeaders.set('Access-Control-Allow-Origin',      request.headers.get('Origin') || '*');

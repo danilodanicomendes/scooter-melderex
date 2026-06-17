@@ -830,7 +830,6 @@ async function fetchCSRFViaProxy() {
     const html = await res.text();
     const m = html.match(/name="csrf-token" content="([^"]+)"/);
     if (m) { state.csrfToken = m[1]; console.debug('CSRF token fetched via proxy'); }
-    readCSRFCookie();
   } catch(e) {
     console.debug('CSRF proxy fetch failed (expected in preview):', e.message);
   }
@@ -845,19 +844,6 @@ function toast(msg, type='', duration=3000) {
   el.className = 'toast show ' + type;
   clearTimeout(el._t);
   el._t = setTimeout(() => el.className = 'toast', duration);
-}
-
-// ═══════════════════════════════════════════════════════════════
-// CSRF — Laravel sets an XSRF-TOKEN cookie on every response.
-// We read it after getCompanies succeeds (cross-origin fetch with
-// credentials). No page-fetch needed, no CORS error.
-// ═══════════════════════════════════════════════════════════════
-function readCSRFCookie() {
-  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
-  if (match) {
-    try { state.csrfToken = decodeURIComponent(match[1]); }
-    catch(e) { state.csrfToken = match[1]; }
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1529,8 +1515,8 @@ async function submitReport() {
   btn.innerHTML = '<span class="spinner"></span> Wird gesendet…';
 
   try {
-    // Read CSRF from cookie (set by getCompanies response)
-    readCSRFCookie();
+    // Refresh CSRF token in case it expired while the page was open
+    await fetchCSRFViaProxy();
 
     // Build merged image blob
     await buildMergedCanvas();
