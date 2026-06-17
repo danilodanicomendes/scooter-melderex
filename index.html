@@ -1575,8 +1575,11 @@ async function submitReport() {
       headers,
     });
 
-    // 2xx = direct success, 3xx = Laravel redirect to /confirmation (also success)
-    if (res.ok || res.redirected || (res.status >= 300 && res.status < 400)) {
+    // 2xx = direct success, 3xx = Laravel redirect to /confirmation (also success).
+    // With redirect: 'manual', a 3xx response is surfaced as an opaque redirect
+    // (status 0, type 'opaqueredirect') even for same-origin requests — per the
+    // Fetch spec, redirect status codes are always filtered this way in manual mode.
+    if (res.ok || res.redirected || res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
       document.getElementById('formArea').style.display = 'none';
       document.getElementById('successScreen').style.display = 'block';
       document.querySelector('.capture-bar').style.display = 'none';
