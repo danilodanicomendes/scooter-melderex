@@ -1,0 +1,1652 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scooter melden</title>
+
+  <!-- exifr for EXIF/GPS extraction -->
+  <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.esm.js" type="module" id="exifr-module"></script>
+  <!-- jsQR kept for potential future use -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <!-- Tesseract.js for OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
+
+  <style>
+    :root {
+      --green: #2d6a4f;
+      --green-light: #52b788;
+      --green-pale: #d8f3dc;
+      --red: #e63946;
+      --grey-bg: #f8f9fa;
+      --grey-border: #dee2e6;
+      --text: #212529;
+      --text-muted: #6c757d;
+      --radius: 12px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--grey-bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      background: white;
+      border-bottom: 1px solid var(--grey-border);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: var(--shadow);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    header .logo {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--green);
+      letter-spacing: -0.3px;
+    }
+
+    header .logo span {
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px 16px 60px;
+    }
+
+    /* ── Capture Buttons ── */
+    .capture-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .capture-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 18px 12px;
+      border: 2px dashed var(--grey-border);
+      border-radius: var(--radius);
+      background: white;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+      text-align: center;
+      position: relative;
+    }
+
+    .capture-btn:hover {
+      border-color: var(--green-light);
+      color: var(--green);
+      background: var(--green-pale);
+    }
+
+    .capture-btn.has-content {
+      border-color: var(--green-light);
+      color: var(--green);
+      background: var(--green-pale);
+      border-style: solid;
+    }
+
+    .capture-btn .icon { font-size: 1.8rem; line-height: 1; }
+    .capture-hint {
+      font-size: 0.68rem;
+      color: inherit;
+      opacity: 0.75;
+      margin-top: 3px;
+      line-height: 1.3;
+      pointer-events: none;
+    }
+    .capture-btn input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+
+
+    /* ── Image Previews ── */
+    .previews {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .preview-item {
+      position: relative;
+      width: calc(50% - 5px);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--grey-border);
+      background: white;
+    }
+
+    .preview-item img {
+      width: 100%;
+      height: 140px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .preview-item .preview-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: white;
+      background: rgba(0,0,0,0.55);
+      padding: 3px 8px;
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+    }
+
+    .preview-item .remove-btn {
+      position: absolute;
+      top: 6px; right: 6px;
+      background: rgba(0,0,0,0.55);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 26px; height: 26px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      line-height: 1;
+    }
+
+    /* ── Card / Form ── */
+    .card {
+      background: white;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .field-group { margin-bottom: 16px; }
+    .field-group:last-child { margin-bottom: 0; }
+
+    label.field-label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: var(--text);
+    }
+
+    select, input[type="text"], textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid var(--grey-border);
+      border-radius: 8px;
+      font-size: 0.95rem;
+      background: white;
+      color: var(--text);
+      appearance: none;
+      -webkit-appearance: none;
+      transition: border-color 0.15s;
+    }
+
+    select:focus, input[type="text"]:focus, textarea:focus {
+      outline: none;
+      border-color: var(--green-light);
+      box-shadow: 0 0 0 3px rgba(82,183,136,0.15);
+    }
+
+    select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236c757d' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+
+    select:disabled { background-color: #f0f0f0; color: var(--text-muted); }
+
+    textarea { resize: vertical; min-height: 90px; font-family: inherit; }
+
+    /* ── GPS row ── */
+    .gps-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .gps-status {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      flex: 1;
+    }
+
+
+    /* ── QR result ── */
+    .qr-result {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--green-pale);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin-top: 8px;
+    }
+
+    .qr-result .qr-icon { font-size: 1.1rem; }
+
+    /* ── Merged Preview ── */
+    .merged-preview {
+      margin-bottom: 16px;
+    }
+
+    .merged-preview canvas {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--grey-border);
+      display: block;
+    }
+
+    .merged-label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+      text-align: center;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-sm {
+      padding: 7px 13px;
+      font-size: 0.8rem;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1.5px solid var(--grey-border);
+      color: var(--text);
+    }
+
+    .btn-outline:hover { border-color: var(--green-light); color: var(--green); }
+
+    .btn-green {
+      background: var(--green);
+      color: white;
+    }
+
+    .btn-green:hover { background: var(--green-light); }
+
+    .btn-danger {
+      background: var(--red);
+      color: white;
+    }
+
+    .submit-row {
+      margin-top: 20px;
+    }
+
+    .btn-submit {
+      width: 100%;
+      padding: 16px;
+      font-size: 1rem;
+      border-radius: 10px;
+      background: var(--green);
+      color: white;
+      border: none;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      letter-spacing: 0.02em;
+    }
+
+    .btn-submit:hover { background: var(--green-light); }
+    .btn-submit:active { transform: scale(0.98); }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Toast / Status ── */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--text);
+      color: white;
+      padding: 12px 22px;
+      border-radius: 30px;
+      font-size: 0.88rem;
+      font-weight: 500;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease;
+      z-index: 1000;
+      white-space: nowrap;
+      max-width: 90vw;
+      text-align: center;
+    }
+
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.success { background: var(--green); }
+    .toast.error { background: var(--red); }
+
+    /* ── Success screen ── */
+    #successScreen {
+      display: none;
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    #successScreen .big-icon { font-size: 4rem; margin-bottom: 16px; }
+    #successScreen h2 { font-size: 1.4rem; margin-bottom: 10px; color: var(--green); }
+    #successScreen p { color: var(--text-muted); margin-bottom: 24px; }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Helper ── */
+    .hint {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 5px;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--grey-border);
+      margin: 16px 0;
+    }
+
+    @media (max-width: 520px) {
+      .capture-bar { grid-template-columns: 1fr; }
+      .preview-item { width: 100%; }
+    }
+
+    /* ── Crop UI ── */
+    .crop-wrap {
+      position: relative;
+      display: none;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1.5px solid var(--green-light);
+      touch-action: none;
+      cursor: crosshair;
+    }
+    .crop-wrap canvas { display: block; width: 100%; }
+    .crop-actions {
+      display: none;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .plate-ocr-status {
+      font-size: 0.8rem;
+      margin-top: 6px;
+      display: none;
+    }
+
+    /* ── License plate prompt banner ── */
+    .plate-prompt {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: var(--green-pale);
+      border: 1.5px solid var(--green-light);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--green);
+    }
+    .plate-prompt .prompt-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🛴 Scooter<span>-Melder</span></div>
+</header>
+
+<div class="container">
+
+  <!-- ── Capture Buttons ── -->
+  <div class="capture-bar">
+    <div class="capture-btn" id="parkingBtn">
+      <span class="icon">📷</span>
+      <span id="parkingBtnLabel">Foto aufnehmen</span>
+      <p class="capture-hint">Direkt mit Kamera für automatisches GPS</p>
+      <input type="file" accept="image/*" id="parkingInput" capture="environment">
+    </div>
+    <div class="capture-btn" id="qrBtn">
+      <span class="icon">🔢</span>
+      <span id="qrBtnLabel">Fahrzeug-ID scannen</span>
+      <p class="capture-hint">Nahaufnahme des Aufklebers unter dem QR-Code</p>
+      <input type="file" accept="image/*" id="qrInput" capture="environment">
+    </div>
+  </div>
+
+  <!-- ── Image Previews ── -->
+  <div class="previews" id="previews"></div>
+
+  <!-- ── Merged Preview canvas (hidden until images exist) ── -->
+  <div class="merged-preview" id="mergedPreviewContainer" style="display:none;">
+    <canvas id="mergedCanvas"></canvas>
+    <p class="merged-label">Vorschau des zusammengeführten Bildes mit Wasserzeichen</p>
+  </div>
+
+  <!-- ── License plate prompt (shown after parking photo added) ── -->
+  <div class="plate-prompt" id="platePrompt">
+    <span>📋 Kennzeichen scannen?</span>
+    <div class="prompt-actions">
+      <button class="btn btn-green btn-sm" onclick="startPlateScanFromPrompt()">Ja</button>
+      <button class="btn btn-outline btn-sm" onclick="dismissPlatePrompt()">Überspringen</button>
+    </div>
+  </div>
+
+  <!-- ── Form ── -->
+  <div id="formArea">
+
+    <div class="card">
+      <div class="section-label">Fahrzeug &amp; Standort</div>
+
+      <div class="field-group">
+        <label class="field-label" for="city">Stadt</label>
+        <select id="city" name="city">
+          <option value="">Bitte wählen</option>
+          <option value="1">Aachen</option>
+          <option value="11">Augsburg</option>
+          <option value="133">Baunatal</option>
+          <option value="5">Berlin</option>
+          <option value="25">Bernburg</option>
+          <option value="26">Bielefeld</option>
+          <option value="28">Böblingen</option>
+          <option value="27">Bochum</option>
+          <option value="2">Bonn</option>
+          <option value="29">Braunschweig</option>
+          <option value="12">Bremen</option>
+          <option value="30">Brühl</option>
+          <option value="32">Celle</option>
+          <option value="33">Chemnitz</option>
+          <option value="34">Cottbus</option>
+          <option value="35">Dachau</option>
+          <option value="36">Darmstadt</option>
+          <option value="37">Detmold</option>
+          <option value="13">Dortmund</option>
+          <option value="38">Dresden</option>
+          <option value="39">Duisburg</option>
+          <option value="14">Düsseldorf</option>
+          <option value="141">Elmshorn</option>
+          <option value="115">Erfurt</option>
+          <option value="15">Erlangen</option>
+          <option value="40">Essen</option>
+          <option value="41">Flensburg</option>
+          <option value="116">Frankfurt (Oder)</option>
+          <option value="6">Frankfurt am Main</option>
+          <option value="42">Frechen</option>
+          <option value="43">Friedrichshafen</option>
+          <option value="123">Fürstenfeldbruck</option>
+          <option value="16">Fürth</option>
+          <option value="44">Gelsenkirchen</option>
+          <option value="117">Gera</option>
+          <option value="118">Germersheim</option>
+          <option value="45">Gifhorn</option>
+          <option value="46">Gladbeck</option>
+          <option value="119">Gotha</option>
+          <option value="47">Göttingen</option>
+          <option value="145">Griesheim</option>
+          <option value="48">Gütersloh</option>
+          <option value="140">Hagen</option>
+          <option value="49">Halle (Saale)</option>
+          <option value="7">Hamburg</option>
+          <option value="50">Hamm</option>
+          <option value="17">Hannover</option>
+          <option value="120">Harrislee</option>
+          <option value="121">Hattersheim</option>
+          <option value="51">Heidelberg</option>
+          <option value="52">Heilbronn</option>
+          <option value="53">Hennef</option>
+          <option value="54">Herford</option>
+          <option value="55">Herne</option>
+          <option value="56">Hilden</option>
+          <option value="57">Hildesheim</option>
+          <option value="58">Ingolstadt</option>
+          <option value="59">Iserlohn</option>
+          <option value="60">Jena</option>
+          <option value="137">Jülich</option>
+          <option value="63">Kaiserslautern</option>
+          <option value="18">Karlsruhe</option>
+          <option value="64">Kassel</option>
+          <option value="65">Kiel</option>
+          <option value="3">Köln</option>
+          <option value="122">Konstanz</option>
+          <option value="67">Laatzen</option>
+          <option value="136">Langenfeld</option>
+          <option value="19">Leipzig</option>
+          <option value="68">Lindau</option>
+          <option value="20">Lübeck</option>
+          <option value="70">Ludwigsburg</option>
+          <option value="71">Ludwigshafen</option>
+          <option value="144">Magdeburg</option>
+          <option value="72">Mainz</option>
+          <option value="73">Mannheim</option>
+          <option value="74">Meerbusch</option>
+          <option value="75">Merseburg</option>
+          <option value="76">Mönchengladbach</option>
+          <option value="124">Monheim am Rhein</option>
+          <option value="78">Mühlheim a.M.</option>
+          <option value="77">Mülheim a.d. Ruhr</option>
+          <option value="8">München</option>
+          <option value="79">Münsingen</option>
+          <option value="21">Münster</option>
+          <option value="80">Neckarsulm</option>
+          <option value="81">Neuss</option>
+          <option value="125">Neustadt an der Weinstraße</option>
+          <option value="22">Nürnberg</option>
+          <option value="82">Oberhausen</option>
+          <option value="147">Oestrich-Winkel</option>
+          <option value="83">Oldenburg</option>
+          <option value="84">Osnabrück</option>
+          <option value="85">Paderborn</option>
+          <option value="135">Passau</option>
+          <option value="86">Peine</option>
+          <option value="87">Pforzheim</option>
+          <option value="148">Pfullingen</option>
+          <option value="142">Pinneberg</option>
+          <option value="88">Potsdam</option>
+          <option value="126">Rastatt</option>
+          <option value="89">Recklinghausen</option>
+          <option value="127">Regensburg</option>
+          <option value="90">Reutlingen</option>
+          <option value="91">Rheda-Wiedenbrück</option>
+          <option value="138">Ronnenberg</option>
+          <option value="23">Rostock</option>
+          <option value="132">Roth</option>
+          <option value="92">Rüsselsheim</option>
+          <option value="93">Saarbrücken</option>
+          <option value="94">Salzgitter</option>
+          <option value="95">Sankt Augustin</option>
+          <option value="96">Schwabach</option>
+          <option value="97">Schwäbisch Gemünd</option>
+          <option value="143">Schwerin</option>
+          <option value="98">Siegburg</option>
+          <option value="99">Sindelfingen</option>
+          <option value="128">Soest</option>
+          <option value="100">Solingen</option>
+          <option value="101">Staßfurt</option>
+          <option value="102">Stein</option>
+          <option value="24">Stuttgart</option>
+          <option value="106">Troisdorf</option>
+          <option value="105">Tübingen</option>
+          <option value="107">Ulm</option>
+          <option value="129">Unterschleißheim</option>
+          <option value="108">Waiblingen</option>
+          <option value="146">Weiterstadt</option>
+          <option value="110">Wiesbaden</option>
+          <option value="111">Wilhelmshaven</option>
+          <option value="112">Witten</option>
+          <option value="130">Wittenberg</option>
+          <option value="113">Wolfsburg</option>
+          <option value="139">Wuppertal</option>
+          <option value="131">Würzburg</option>
+          <option value="114">Zwickau</option>
+        </select>
+        <p class="hint" id="cityHint"></p>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="company">Anbieter</label>
+        <select id="company" disabled>
+          <option value="">Zuerst Stadt wählen</option>
+        </select>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="problem">Grund der Meldung</label>
+        <select id="problem">
+          <option selected>Falschparker</option>
+          <option>Vandalismusschaden</option>
+          <option>Umgestoßenes Fahrzeug</option>
+          <option>Anderer Grund</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">GPS &amp; Adresse</div>
+
+      <div class="field-group">
+        <label class="field-label">Standort</label>
+        <button class="btn btn-outline btn-sm" id="gpsCapBtn" onclick="getGPS(); return false;" style="width:100%; justify-content:center; margin-bottom:8px;">
+          <span id="gpsBtnIcon">📍</span>&nbsp;<span id="gpsBtnLabel">Aktuellen Standort abrufen</span>
+        </button>
+        <p class="hint" id="gpsStatus"></p>
+        <p class="hint" id="gpsHint" style="margin-top:4px;">💡 GPS aus Foto-EXIF funktioniert nur bei direkt mit der Kamera aufgenommenen Bildern. Über Google Fotos heruntergeladene Bilder verlieren die GPS-Daten.</p>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="location">Adressbeschreibung <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+        <input type="text" id="location" placeholder="z.B. Maximilianstraße 10, München">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">Fahrzeugdaten</div>
+
+      <div class="field-group">
+        <label class="field-label" for="scooterId">Fahrzeug-ID</label>
+
+        <!-- Inline label photo preview (shown after capture) -->
+        <div id="labelPhotoWrap" style="display:none; margin-bottom:10px; position:relative;">
+          <img id="labelPhotoImg" src="#" alt="Label-Foto"
+               style="width:100%; max-height:180px; object-fit:cover; border-radius:8px; border:1px solid var(--grey-border); display:block;">
+          <div id="ocrOverlay" style="
+            position:absolute; inset:0; background:rgba(0,0,0,0.45);
+            display:flex; align-items:center; justify-content:center;
+            border-radius:8px; color:white; font-size:0.85rem; font-weight:600; gap:6px;">
+            <span class="spinner"></span> Erkennung läuft…
+          </div>
+        </div>
+
+        <!-- OCR status badge -->
+        <div id="ocrStatus" style="display:none; margin-bottom:8px;"></div>
+
+        <input type="text" id="scooterId" placeholder="z.B. GAY-HAA · YKQY · 198-246"
+               style="font-size:1.05rem; letter-spacing:0.05em;">
+        <p class="hint">Foto des Aufklebers unter dem QR-Code aufnehmen – ID wird automatisch erkannt oder kann manuell eingegeben werden.</p>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="licensePlate">Versicherungskennzeichen <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+
+        <!-- plateInput hidden — triggered by prompt or directly -->
+        <input type="file" accept="image/*" id="plateInput" capture="environment" style="display:none;">
+
+        <!-- Crop UI (shown after photo picked) -->
+        <div class="crop-wrap" id="cropWrap">
+          <canvas id="cropCanvas"></canvas>
+        </div>
+        <div class="crop-actions" id="cropActions">
+          <button class="btn btn-green btn-sm" onclick="runPlateOCR()">✅ Erkennen</button>
+          <button class="btn btn-outline btn-sm" onclick="resetCrop()">✕ Abbrechen</button>
+        </div>
+        <p class="hint" style="margin-bottom:6px;" id="cropHint" style="display:none;">Ziehe einen Rahmen um das Kennzeichen, dann tippe „Erkennen".</p>
+
+        <!-- OCR status -->
+        <div class="plate-ocr-status" id="plateOcrStatus"></div>
+
+        <input type="text" id="licensePlate" placeholder="6-stellig, Rückseite des Fahrzeugs">
+        <p class="hint" style="margin-top:5px;">Nach dem Parkfoto erscheint ein Hinweis zum Scannen – oder direkt eingeben.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">Weitere Informationen</div>
+      <textarea id="description" placeholder="Weitere Angaben zum Standort oder Problem (optional)…"></textarea>
+    </div>
+
+    <div class="submit-row">
+      <button class="btn-submit" id="submitBtn" onclick="submitReport()">
+        Meldung abschicken
+      </button>
+    </div>
+
+  </div><!-- /formArea -->
+
+  <!-- ── Success Screen ── -->
+  <div id="successScreen">
+    <div class="big-icon">✅</div>
+    <h2>Meldung abgeschickt!</h2>
+    <p>Der Anbieter wurde benachrichtigt und sollte das Fahrzeug in Kürze umstellen.</p>
+    <button class="btn btn-green" onclick="resetForm()">Neue Meldung</button>
+  </div>
+
+</div><!-- /container -->
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script type="module">
+  // ── Import exifr ──
+  import exifr from 'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.esm.js';
+  window._exifr = exifr;
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+const state = {
+  parkingImage: null,   // { file, dataUrl, label }
+  qrImage: null,        // { file, dataUrl, label }
+  gpsCoords: null,      // { lat, lon }
+  csrfToken: null,
+  WATERMARK_TEXT: 'reported by xyz'  // ← change this
+};
+
+// ═══════════════════════════════════════════════════════════════
+// CITY MAP  (name → option value, normalised)
+// ═══════════════════════════════════════════════════════════════
+const CITY_MAP = {
+  'aachen':1,'augsburg':11,'baunatal':133,'berlin':5,'bernburg':25,
+  'bielefeld':26,'boblingen':28,'bochum':27,'bonn':2,'braunschweig':29,
+  'bremen':12,'bruhl':30,'celle':32,'chemnitz':33,'cottbus':34,
+  'dachau':35,'darmstadt':36,'detmold':37,'dortmund':13,'dresden':38,
+  'duisburg':39,'dusseldorf':14,'elmshorn':141,'erfurt':115,'erlangen':15,
+  'essen':40,'flensburg':41,'frankfurt':6,'frechen':42,'friedrichshafen':43,
+  'furstenfeldbruck':123,'furth':16,'gelsenkirchen':44,'gera':117,
+  'germersheim':118,'gifhorn':45,'gladbeck':46,'gotha':119,'gottingen':47,
+  'griesheim':145,'gutersloh':48,'hagen':140,'halle':49,'hamburg':7,
+  'hamm':50,'hannover':17,'harrislee':120,'hattersheim':121,'heidelberg':51,
+  'heilbronn':52,'hennef':53,'herford':54,'herne':55,'hilden':56,
+  'hildesheim':57,'ingolstadt':58,'iserlohn':59,'jena':60,'julich':137,
+  'kaiserslautern':63,'karlsruhe':18,'kassel':64,'kiel':65,'koln':3,
+  'konstanz':122,'laatzen':67,'langenfeld':136,'leipzig':19,'lindau':68,
+  'lubeck':20,'ludwigsburg':70,'ludwigshafen':71,'magdeburg':144,'mainz':72,
+  'mannheim':73,'meerbusch':74,'merseburg':75,'monchengladbach':76,
+  'monheim am rhein':124,'muhlheim':78,'mulheim':77,'munchen':8,'munich':8,
+  'munsingen':79,'munster':21,'neckarsulm':80,'neuss':81,'neustadt':125,
+  'nurnberg':22,'oberhausen':82,'oestrich-winkel':147,'oldenburg':83,
+  'osnabruck':84,'paderborn':85,'passau':135,'peine':86,'pforzheim':87,
+  'pfullingen':148,'pinneberg':142,'potsdam':88,'rastatt':126,
+  'recklinghausen':89,'regensburg':127,'reutlingen':90,
+  'rheda-wiedenbruck':91,'ronnenberg':138,'rostock':23,'roth':132,
+  'russelsheim':92,'saarbrucken':93,'salzgitter':94,'sankt augustin':95,
+  'schwabach':96,'schwabisch gmund':97,'schwerin':143,'siegburg':98,
+  'sindelfingen':99,'soest':128,'solingen':100,'stafurt':101,'stein':102,
+  'stuttgart':24,'troisdorf':106,'tubingen':105,'ulm':107,
+  'unterschleisheim':129,'waiblingen':108,'weiterstadt':146,'wiesbaden':110,
+  'wilhelmshaven':111,'witten':112,'wittenberg':130,'wolfsburg':113,
+  'wuppertal':139,'wurzburg':131,'zwickau':114
+};
+
+function normCity(s) {
+  return s.toLowerCase()
+    .replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u').replace(/ß/g,'ss')
+    .replace(/[^a-z0-9 \-]/g,'').trim();
+}
+
+function matchCity(name) {
+  if (!name) return null;
+  const n = normCity(name);
+  if (CITY_MAP[n]) return CITY_MAP[n];
+  // partial match
+  for (const [k,v] of Object.entries(CITY_MAP)) {
+    if (n.includes(k) || k.includes(n)) return v;
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COMPANY MAP  (city ID → [{'id','name'}])  — hardcoded from API
+// Used as primary source; live API call used as fallback when hosted.
+// ═══════════════════════════════════════════════════════════════
+const COMPANIES = {"1":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"2":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"3":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"5":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"6":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"7":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"8":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"11":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"12":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"13":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"14":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"15":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"16":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"17":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"18":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"19":[{"id":"6","name":"Voi"}],"20":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"21":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"22":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"23":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"24":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"25":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"26":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"27":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"28":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"29":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"30":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"32":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"33":[{"id":"6","name":"Voi"}],"34":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"35":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"36":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"37":[{"id":"6","name":"Voi"}],"38":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"39":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"40":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"41":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"42":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"43":[{"id":"6","name":"Voi"}],"44":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"45":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"46":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"47":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"48":[{"id":"6","name":"Voi"}],"49":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"50":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"51":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"52":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"53":[{"id":"6","name":"Voi"}],"54":[{"id":"6","name":"Voi"}],"55":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"56":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"57":[{"id":"6","name":"Voi"}],"58":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"59":[{"id":"6","name":"Voi"}],"60":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"63":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"64":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"65":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"67":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"68":[{"id":"6","name":"Voi"}],"70":[{"id":"6","name":"Voi"}],"71":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"72":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"73":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"74":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"75":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"76":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"77":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"78":[{"id":"6","name":"Voi"}],"79":[{"id":"6","name":"Voi"}],"80":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"81":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"82":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"83":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"84":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"85":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"86":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"87":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"88":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"89":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"90":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"91":[{"id":"6","name":"Voi"}],"92":[{"id":"6","name":"Voi"}],"93":[{"id":"6","name":"Voi"}],"94":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"95":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"96":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"97":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"98":[{"id":"6","name":"Voi"}],"99":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"100":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"101":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"102":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"105":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"106":[{"id":"6","name":"Voi"}],"107":[{"id":"6","name":"Voi"}],"108":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"110":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"111":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"112":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"113":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"114":[{"id":"6","name":"Voi"}],"115":[{"id":"6","name":"Voi"}],"116":[{"id":"6","name":"Voi"}],"117":[{"id":"6","name":"Voi"}],"118":[{"id":"6","name":"Voi"}],"119":[{"id":"6","name":"Voi"}],"120":[{"id":"6","name":"Voi"}],"121":[{"id":"6","name":"Voi"}],"122":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"123":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"124":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"125":[{"id":"6","name":"Voi"}],"126":[{"id":"6","name":"Voi"}],"127":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"128":[{"id":"6","name":"Voi"}],"129":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"130":[{"id":"6","name":"Voi"}],"131":[{"id":"6","name":"Voi"}],"132":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"133":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"135":[{"id":"6","name":"Voi"}],"136":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"137":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"138":[{"id":"6","name":"Voi"}],"139":[{"id":"3","name":"Bolt"},{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"140":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"141":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"142":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"143":[{"id":"6","name":"Voi"}],"144":[{"id":"6","name":"Voi"}],"145":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"146":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"147":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}],"148":[{"id":"3","name":"Bolt"},{"id":"6","name":"Voi"}]};
+
+// ═══════════════════════════════════════════════════════════════
+// CSRF — fetch fresh token + session cookie via proxy GET /api/
+// ═══════════════════════════════════════════════════════════════
+async function fetchCSRFViaProxy() {
+  try {
+    const res = await fetch('/api/', { credentials: 'include' });
+    const html = await res.text();
+    const m = html.match(/name="csrf-token" content="([^"]+)"/);
+    if (m) { state.csrfToken = m[1]; console.debug('CSRF token fetched via proxy'); }
+    readCSRFCookie();
+  } catch(e) {
+    console.debug('CSRF proxy fetch failed (expected in preview):', e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════════
+function toast(msg, type='', duration=3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + type;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = 'toast', duration);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CSRF — Laravel sets an XSRF-TOKEN cookie on every response.
+// We read it after getCompanies succeeds (cross-origin fetch with
+// credentials). No page-fetch needed, no CORS error.
+// ═══════════════════════════════════════════════════════════════
+function readCSRFCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+  if (match) {
+    try { state.csrfToken = decodeURIComponent(match[1]); }
+    catch(e) { state.csrfToken = match[1]; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LOAD COMPANIES
+// Primary: hardcoded map (works offline + in Claude preview).
+// Fallback: live API call (also grabs fresh CSRF cookie).
+// ═══════════════════════════════════════════════════════════════
+async function loadCompanies(cityId) {
+  const sel = document.getElementById('company');
+  sel.disabled = true;
+
+  // Use hardcoded map immediately — no network needed
+  const providers = COMPANIES[String(cityId)];
+  if (providers && providers.length) {
+    sel.innerHTML = '<option value="">Bitte wählen</option>' +
+      providers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    sel.disabled = false;
+  } else {
+    sel.innerHTML = '<option value="">Kein Anbieter bekannt</option>';
+  }
+
+  // No live API call needed — hardcoded map is sufficient.
+  // CSRF token is fetched once on page load via fetchCSRFViaProxy().
+}
+
+document.getElementById('city').addEventListener('change', function() {
+  if (this.value) loadCompanies(this.value);
+  else {
+    const sel = document.getElementById('company');
+    sel.innerHTML = '<option value="">Zuerst Stadt wählen</option>';
+    sel.disabled = true;
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// REVERSE GEOCODE → city
+// ═══════════════════════════════════════════════════════════════
+async function reverseGeocode(lat, lon) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=de`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'ScooterMelderApp/1.0' }});
+    const data = await res.json();
+    const addr = data.address || {};
+    return addr.city || addr.town || addr.village || addr.municipality || null;
+  } catch(e) {
+    return null;
+  }
+}
+
+async function applyCityFromGPS(lat, lon) {
+  const cityName = await reverseGeocode(lat, lon);
+  if (!cityName) return;
+  const id = matchCity(cityName);
+  const cityHint = document.getElementById('cityHint');
+  if (id) {
+    document.getElementById('city').value = id;
+    cityHint.textContent = `📍 Stadt automatisch erkannt: ${cityName}`;
+    loadCompanies(id);
+  } else {
+    cityHint.textContent = `📍 GPS-Stadt "${cityName}" nicht in der Liste – bitte manuell wählen`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GPS BUTTON
+// ═══════════════════════════════════════════════════════════════
+function getGPS() {
+  if (!navigator.geolocation) { toast('GPS nicht verfügbar', 'error'); return; }
+  const btn = document.getElementById('gpsCapBtn');
+  btn.disabled = true;
+  document.getElementById('gpsBtnIcon').textContent = '⏳';
+  document.getElementById('gpsBtnLabel').textContent = 'Suche…';
+
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      state.gpsCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      const coordStr = `${state.gpsCoords.lat.toFixed(5)}, ${state.gpsCoords.lon.toFixed(5)}`;
+      btn.disabled = false;
+      document.getElementById('gpsBtnIcon').textContent = '✅';
+      document.getElementById('gpsBtnLabel').textContent = 'Standort aktiv';
+      document.getElementById('gpsStatus').textContent = '📍 ' + coordStr;
+      document.getElementById('gpsHint').textContent = '';
+      applyCityFromGPS(state.gpsCoords.lat, state.gpsCoords.lon);
+      toast('📍 Standort ermittelt', 'success');
+    },
+    err => {
+      btn.disabled = false;
+      document.getElementById('gpsBtnIcon').textContent = '📍';
+      document.getElementById('gpsBtnLabel').textContent = 'Aktuellen Standort abrufen';
+      toast('GPS-Zugriff verweigert – bitte Berechtigung prüfen', 'error');
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EXIF GPS EXTRACTION
+// ═══════════════════════════════════════════════════════════════
+async function extractGPSFromFile(file) {
+  if (!window._exifr) return null;
+  try {
+    const gps = await window._exifr.gps(file);
+    if (gps && gps.latitude && gps.longitude) return { lat: gps.latitude, lon: gps.longitude };
+  } catch(e) {}
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OCR — extract vehicle ID from label photo using Tesseract.js
+// Supports: GAY-HAA (Lime), YKQY (Voi), 198-246 (Bolt)
+//
+// NOTE: OCR does NOT work in the Claude.ai preview iframe due to
+// its strict CSP blocking blob: worker URLs that Tesseract needs.
+// This is preview-only limitation — OCR works correctly when the
+// app is hosted on GitHub Pages, Netlify, or any normal web host.
+// ═══════════════════════════════════════════════════════════════
+const TESS_CDN      = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/';
+const TESS_CORE_DIR = 'https://cdn.jsdelivr.net/npm/tesseract.js-core@v5.1.0/';
+const TESS_LANG     = 'https://tessdata.projectnaptha.com/4.0.0_fast/';
+
+async function runOCR(file) {
+  try {
+    if (typeof Tesseract === 'undefined') {
+      console.warn('Tesseract.js not loaded yet');
+      return null;
+    }
+
+    // Convert file to dataURL — avoids blob: fetch restrictions in strict CSP hosts
+    const dataUrl = await fileToDataUrl(file);
+
+    const worker = await Tesseract.createWorker('eng', 1, {
+      workerPath: TESS_CDN + 'worker.min.js',
+      corePath:   TESS_CORE_DIR,
+      langPath:   TESS_LANG,
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-',
+    });
+
+    // PSM 11 = sparse text — best for short labels amid background noise
+    await worker.setParameters({ tessedit_pageseg_mode: '11' });
+
+    const { data: { text } } = await worker.recognize(dataUrl);
+    await worker.terminate();
+
+    const clean = text.replace(/\s+/g, ' ').trim();
+    console.log('OCR raw:', repr(clean));
+    return extractIdFromText(clean);
+  } catch(e) {
+    console.warn('OCR failed:', e);
+    return null;
+  }
+}
+
+function repr(s) { return JSON.stringify(s); } // for debug logging
+
+function extractIdFromText(text) {
+  if (!text) return null;
+
+  // Most specific patterns first
+  const patterns = [
+    /\b([A-Z]{3}-[A-Z]{3})\b/,    // Lime: GAY-HAA
+    /\b([0-9]{3}-[0-9]{3})\b/,    // Bolt: 198-246
+    /\b([A-Z]{4})\b/,              // Voi:  YKQY
+    /\b([A-Z0-9]{3}-[A-Z0-9]{3})\b/, // generic XXX-XXX
+    /\b([A-Z0-9]{4,8})\b/,         // generic 4-8 char ID
+  ];
+
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// IMAGE HANDLING
+// ═══════════════════════════════════════════════════════════════
+function fileToDataUrl(file) {
+  return new Promise(resolve => {
+    const r = new FileReader();
+    r.onload = e => resolve(e.target.result);
+    r.readAsDataURL(file);
+  });
+}
+
+function renderPreviews() {
+  const container = document.getElementById('previews');
+  container.innerHTML = '';
+  const items = [
+    state.parkingImage && { ...state.parkingImage, key: 'parking' },
+    state.qrImage && { ...state.qrImage, key: 'qr' }
+  ].filter(Boolean);
+
+  items.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'preview-item';
+    div.innerHTML = `
+      <img src="${item.dataUrl}" alt="">
+      <div class="preview-label">${item.label}</div>
+      <button class="remove-btn" onclick="removeImage('${item.key}')">✕</button>
+    `;
+    container.appendChild(div);
+  });
+
+  updateMergedPreview();
+}
+
+function removeImage(key) {
+  if (key === 'parking') {
+    state.parkingImage = null;
+    document.getElementById('parkingInput').value = '';
+    document.getElementById('parkingBtn').classList.remove('has-content');
+    document.getElementById('parkingBtnLabel').textContent = 'Foto aufnehmen';
+  } else {
+    state.qrImage = null;
+    document.getElementById('qrInput').value = '';
+    document.getElementById('qrBtn').classList.remove('has-content');
+    document.getElementById('qrBtnLabel').textContent = 'Fahrzeug-ID scannen';
+  }
+  renderPreviews();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CANVAS MERGE + WATERMARK
+// ═══════════════════════════════════════════════════════════════
+function loadImg(dataUrl) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.src = dataUrl;
+  });
+}
+
+async function buildMergedCanvas() {
+  const images = [state.parkingImage, state.qrImage].filter(Boolean);
+  if (images.length === 0) return null;
+
+  const loaded = await Promise.all(images.map(i => loadImg(i.dataUrl)));
+
+  const TARGET_W = 1200;
+  const GAP = images.length > 1 ? 8 : 0;
+
+  // Scale each image to TARGET_W width
+  const scaled = loaded.map(img => {
+    const scale = TARGET_W / img.width;
+    return { img, w: TARGET_W, h: Math.round(img.height * scale) };
+  });
+
+  const totalH = scaled.reduce((s, i) => s + i.h, 0) + GAP * (scaled.length - 1);
+
+  const canvas = document.getElementById('mergedCanvas');
+  canvas.width = TARGET_W;
+  canvas.height = totalH;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, TARGET_W, totalH);
+
+  let y = 0;
+  scaled.forEach((s, idx) => {
+    ctx.drawImage(s.img, 0, y, s.w, s.h);
+    if (idx < scaled.length - 1) y += s.h + GAP;
+    else y += s.h;
+  });
+
+  // Watermark
+  const wmText = state.WATERMARK_TEXT;
+  const fontSize = Math.max(20, Math.round(TARGET_W * 0.018));
+  ctx.font = `bold ${fontSize}px -apple-system, Arial, sans-serif`;
+  const padding = Math.round(fontSize * 0.7);
+  const textW = ctx.measureText(wmText).width;
+  const bgW = textW + padding * 2;
+  const bgH = fontSize + padding;
+
+  // Semi-transparent background pill
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  const rx = TARGET_W - bgW - 16;
+  const ry = totalH - bgH - 16;
+  roundRect(ctx, rx, ry, bgW, bgH, 6);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(wmText, rx + padding, ry + bgH / 2);
+
+  return canvas;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+async function updateMergedPreview() {
+  const container = document.getElementById('mergedPreviewContainer');
+  if (!state.parkingImage && !state.qrImage) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+  await buildMergedCanvas();
+}
+
+function canvasToBlob(canvas) {
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.88));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FILE INPUT HANDLERS
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('parkingInput').addEventListener('change', async function() {
+  const file = this.files[0];
+  if (!file) return;
+  toast('📷 Bild wird verarbeitet…');
+
+  const dataUrl = await fileToDataUrl(file);
+  state.parkingImage = { file, dataUrl, label: '📷 Parkverstoß' };
+  document.getElementById('parkingBtn').classList.add('has-content');
+  document.getElementById('parkingBtnLabel').textContent = 'Foto ändern';
+  renderPreviews();
+
+  // Extract GPS from EXIF
+  const gps = await extractGPSFromFile(file);
+  if (gps) {
+    state.gpsCoords = gps;
+    const coordStr = `${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}`;
+    document.getElementById('gpsStatus').textContent = '📍 ' + coordStr;
+    document.getElementById('gpsHint').textContent = '';
+    document.getElementById('gpsBtnIcon').textContent = '✅';
+    document.getElementById('gpsBtnLabel').textContent = 'GPS aus Foto';
+    await applyCityFromGPS(gps.lat, gps.lon);
+    toast('📍 GPS aus Foto erkannt', 'success');
+  } else {
+    toast('Kein GPS in Foto gefunden', '');
+  }
+
+  // Show license plate scan prompt
+  showPlatePrompt();
+});
+
+document.getElementById('qrInput').addEventListener('change', async function() {
+  const file = this.files[0];
+  if (!file) return;
+
+  const dataUrl = await fileToDataUrl(file);
+  state.qrImage = { file, dataUrl, label: '🔢 Fahrzeug-ID' };
+  document.getElementById('qrBtn').classList.add('has-content');
+  document.getElementById('qrBtnLabel').textContent = 'Erneut aufnehmen';
+  renderPreviews();
+
+  // Show inline photo preview immediately
+  const wrap = document.getElementById('labelPhotoWrap');
+  const img = document.getElementById('labelPhotoImg');
+  const overlay = document.getElementById('ocrOverlay');
+  const statusEl = document.getElementById('ocrStatus');
+  img.src = dataUrl;
+  wrap.style.display = 'block';
+  overlay.style.display = 'flex';
+  statusEl.style.display = 'none';
+
+  // Auto-focus the ID field so user can type immediately if OCR takes long
+  document.getElementById('scooterId').focus();
+  toast('📷 Bild aufgenommen – Erkennung läuft…');
+
+  // Run OCR in background
+  const detectedId = await runOCR(file);
+  overlay.style.display = 'none';
+
+  if (detectedId) {
+    // Only pre-fill if field is still empty (user may have typed already)
+    if (!document.getElementById('scooterId').value.trim()) {
+      document.getElementById('scooterId').value = detectedId;
+    }
+    statusEl.innerHTML = `<span style="color:var(--green);font-size:0.8rem;font-weight:600;">✅ Erkannt: ${detectedId} – bitte prüfen und ggf. korrigieren</span>`;
+    statusEl.style.display = 'block';
+    toast('✅ ID erkannt: ' + detectedId, 'success');
+  } else {
+    statusEl.innerHTML = `<span style="color:var(--text-muted);font-size:0.8rem;">⚠️ Keine ID erkannt – bitte manuell eingeben (z.B. GAY-HAA, YKQY, 198-246)</span>`;
+    statusEl.style.display = 'block';
+    toast('Keine ID erkannt – bitte manuell eingeben', '', 4000);
+  }
+
+  // Also try GPS from label image EXIF
+  if (!state.gpsCoords) {
+    const gps = await extractGPSFromFile(file);
+    if (gps) {
+      state.gpsCoords = gps;
+      document.getElementById('gpsStatus').textContent = '📍 ' + `${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}`;
+    }
+  }
+});
+
+
+
+// ═══════════════════════════════════════════════════════════════
+// LICENSE PLATE PROMPT
+// ═══════════════════════════════════════════════════════════════
+function showPlatePrompt() {
+  // Only show if no plate already scanned/entered
+  if (document.getElementById('licensePlate').value.trim()) return;
+  document.getElementById('platePrompt').style.display = 'flex';
+  // Scroll prompt into view smoothly
+  document.getElementById('platePrompt').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function dismissPlatePrompt() {
+  document.getElementById('platePrompt').style.display = 'none';
+}
+
+function startPlateScanFromPrompt() {
+  dismissPlatePrompt();
+
+  // Use the already-loaded parking photo — no second photo needed
+  if (state.parkingImage && state.parkingImage.dataUrl) {
+    const img = new Image();
+    img.onload = () => openCropWithImage(img);
+    img.src = state.parkingImage.dataUrl;
+  } else {
+    // Fallback: open camera if somehow no parking photo yet
+    document.getElementById('plateInput').click();
+  }
+}
+// ═══════════════════════════════════════════════════════════════
+// LICENSE PLATE CROP + OCR
+// ═══════════════════════════════════════════════════════════════
+const cropState = {
+  img: null,        // HTMLImageElement of original photo
+  imgW: 0, imgH: 0, // natural dimensions
+  scale: 1,         // canvas display scale vs natural
+  dragging: false,
+  startX: 0, startY: 0,
+  rect: null,       // { x, y, w, h } in NATURAL image coords
+};
+
+function openCropWithImage(img) {
+  cropState.img = img;
+  cropState.imgW = img.naturalWidth;
+  cropState.imgH = img.naturalHeight;
+  cropState.rect = null;
+
+  const wrap = document.getElementById('cropWrap');
+  const canvas = document.getElementById('cropCanvas');
+
+  // Fit canvas to container width
+  const displayW = wrap.parentElement.clientWidth - 4;
+  cropState.scale = cropState.imgW / displayW;
+  canvas.width  = displayW;
+  canvas.height = Math.round(cropState.imgH / cropState.scale);
+
+  wrap.style.display = 'block';
+  document.getElementById('cropActions').style.display = 'flex';
+  document.getElementById('cropHint').style.display = 'block';
+  document.getElementById('plateOcrStatus').style.display = 'none';
+
+  // Scroll crop UI into view
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  drawCrop();
+}
+
+document.getElementById('plateInput').addEventListener('change', async function() {
+  const file = this.files[0];
+  if (!file) return;
+  const dataUrl = await fileToDataUrl(file);
+  const img = new Image();
+  img.onload = () => openCropWithImage(img);
+  img.src = dataUrl;
+  this.value = ''; // allow re-picking same file
+});
+
+function getCanvasPos(canvas, e) {
+  const r = canvas.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  // Scale from CSS px to canvas px
+  const scaleX = canvas.width  / r.width;
+  const scaleY = canvas.height / r.height;
+  return {
+    x: (clientX - r.left) * scaleX,
+    y: (clientY - r.top)  * scaleY,
+  };
+}
+
+function drawCrop() {
+  const canvas = document.getElementById('cropCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(cropState.img, 0, 0, canvas.width, canvas.height);
+
+  if (cropState.rect) {
+    const { x, y, w, h } = cropState.rect;
+    // Display rect is in natural coords → convert to canvas coords
+    const s = cropState.scale;
+    const dx = x / s, dy = y / s, dw = w / s, dh = h / s;
+
+    // Darken outside
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(dx, dy, dw, dh);
+    ctx.drawImage(cropState.img, x, y, w, h, dx, dy, dw, dh);
+
+    // Border
+    ctx.strokeStyle = '#52b788';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(dx, dy, dw, dh);
+
+    // Corner handles
+    const hs = 8;
+    ctx.fillStyle = '#52b788';
+    [[dx,dy],[dx+dw,dy],[dx,dy+dh],[dx+dw,dy+dh]].forEach(([cx,cy]) => {
+      ctx.fillRect(cx - hs/2, cy - hs/2, hs, hs);
+    });
+  } else {
+    // Guide text
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = `bold ${Math.round(canvas.width * 0.038)}px -apple-system, Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Rahmen um Kennzeichen ziehen', canvas.width / 2, canvas.height / 2);
+  }
+}
+
+// Pointer events — support both mouse and touch
+const cropCanvas = document.getElementById('cropCanvas');
+
+function onCropStart(e) {
+  e.preventDefault();
+  const pos = getCanvasPos(cropCanvas, e);
+  cropState.dragging = true;
+  // Convert canvas coords to natural image coords
+  cropState.startX = pos.x * cropState.scale;
+  cropState.startY = pos.y * cropState.scale;
+  cropState.rect = null;
+}
+
+function onCropMove(e) {
+  e.preventDefault();
+  if (!cropState.dragging) return;
+  const pos = getCanvasPos(cropCanvas, e);
+  const curX = pos.x * cropState.scale;
+  const curY = pos.y * cropState.scale;
+  cropState.rect = {
+    x: Math.min(cropState.startX, curX),
+    y: Math.min(cropState.startY, curY),
+    w: Math.abs(curX - cropState.startX),
+    h: Math.abs(curY - cropState.startY),
+  };
+  drawCrop();
+}
+
+function onCropEnd(e) {
+  cropState.dragging = false;
+  if (cropState.rect && (cropState.rect.w < 10 || cropState.rect.h < 10)) {
+    cropState.rect = null;
+    drawCrop();
+  }
+}
+
+cropCanvas.addEventListener('mousedown',  onCropStart);
+cropCanvas.addEventListener('mousemove',  onCropMove);
+cropCanvas.addEventListener('mouseup',    onCropEnd);
+cropCanvas.addEventListener('touchstart', onCropStart, { passive: false });
+cropCanvas.addEventListener('touchmove',  onCropMove,  { passive: false });
+cropCanvas.addEventListener('touchend',   onCropEnd);
+
+async function runPlateOCR() {
+  if (!cropState.rect || cropState.rect.w < 10 || cropState.rect.h < 10) {
+    toast('Bitte zuerst einen Rahmen um das Kennzeichen ziehen', 'error');
+    return;
+  }
+
+  const statusEl = document.getElementById('plateOcrStatus');
+  statusEl.innerHTML = '<span class="spinner" style="border-color:rgba(0,0,0,0.2);border-top-color:var(--green);"></span> Erkennung läuft…';
+  statusEl.style.display = 'block';
+
+  // Render the cropped region to an offscreen canvas at 3× for better OCR
+  const { x, y, w, h } = cropState.rect;
+  const SCALE = 3;
+  const off = document.createElement('canvas');
+  off.width  = Math.round(w * SCALE);
+  off.height = Math.round(h * SCALE);
+  const ctx = off.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(cropState.img, x, y, w, h, 0, 0, off.width, off.height);
+
+  // Convert to dataURL for Tesseract
+  const cropDataUrl = off.toDataURL('image/jpeg', 0.95);
+  const plateText = await runOCROnCrop(cropDataUrl);
+
+  if (plateText) {
+    if (!document.getElementById('licensePlate').value.trim()) {
+      document.getElementById('licensePlate').value = plateText;
+    }
+    statusEl.innerHTML = `<span style="color:var(--green);font-weight:600;">✅ Erkannt: ${plateText} – bitte prüfen</span>`;
+    toast('✅ Kennzeichen erkannt: ' + plateText, 'success');
+  } else {
+    statusEl.innerHTML = '<span style="color:var(--text-muted);">⚠️ Nichts erkannt – bitte manuell eingeben</span>';
+    toast('Nichts erkannt – bitte manuell eingeben', '', 4000);
+  }
+}
+
+function resetCrop() {
+  cropState.img = null;
+  cropState.rect = null;
+  document.getElementById('cropWrap').style.display = 'none';
+  document.getElementById('cropActions').style.display = 'none';
+  document.getElementById('cropHint').style.display = 'none';
+  document.getElementById('plateOcrStatus').style.display = 'none';
+}
+
+// OCR specifically for license plate crops — different whitelist & PSM
+async function runOCROnCrop(dataUrl) {
+  try {
+    if (typeof Tesseract === 'undefined') return null;
+    const worker = await Tesseract.createWorker('deu', 1, {
+      workerPath: TESS_CDN + 'worker.min.js',
+      corePath:   TESS_CORE_DIR,
+      langPath:   TESS_LANG,
+      // Versicherungskennzeichen: 3 letters + 3 digits e.g. "ABC 123"
+      // Allow space and slash for edge cases
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 /',
+    });
+    // PSM 7 = single text line — ideal for a cropped plate
+    await worker.setParameters({ tessedit_pageseg_mode: '7' });
+    const { data: { text } } = await worker.recognize(dataUrl);
+    await worker.terminate();
+
+    const clean = text.replace(/[^A-Z0-9 /]/g, '').replace(/\s+/g, ' ').trim();
+    console.log('Plate OCR raw:', repr(clean));
+    return extractPlateText(clean);
+  } catch(e) {
+    console.warn('Plate OCR failed:', e);
+    return null;
+  }
+}
+
+function extractPlateText(text) {
+  if (!text || text.length < 3) return null;
+  // German Versicherungskennzeichen: 3 letters + 3 digits (with optional space/separator)
+  // e.g. "ABC123", "ABC 123", "ABC-123"
+  const m = text.match(/([A-Z]{3})[\s\-/]?([0-9]{3})/);
+  if (m) return m[1] + ' ' + m[2];
+  // Fallback: return cleaned text if it looks plate-like (5-8 alphanum chars)
+  const stripped = text.replace(/\s/g, '');
+  if (stripped.length >= 5 && stripped.length <= 8) return text.trim();
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SUBMIT
+// ═══════════════════════════════════════════════════════════════
+async function submitReport() {
+  const city = document.getElementById('city').value;
+  const company = document.getElementById('company').value;
+
+  if (!city) { toast('Bitte Stadt auswählen', 'error'); return; }
+  if (!company) { toast('Bitte Anbieter auswählen', 'error'); return; }
+  if (!state.parkingImage && !state.qrImage) { toast('Bitte mindestens ein Foto hinzufügen', 'error'); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Wird gesendet…';
+
+  try {
+    // Read CSRF from cookie (set by getCompanies response)
+    readCSRFCookie();
+
+    // Build merged image blob
+    await buildMergedCanvas();
+    const canvas = document.getElementById('mergedCanvas');
+    const imageBlob = await canvasToBlob(canvas);
+
+    // Build multipart/form-data body manually as ArrayBuffer.
+    // This avoids the FormData DataCloneError in environments (e.g. Claude
+    // preview) where fetch() proxies requests via postMessage, which cannot
+    // clone FormData containing Blob objects.
+    const fields = [
+      ['_token',       state.csrfToken || ''],
+      ['city',         city],
+      ['company',      company],
+      ['problem',      document.getElementById('problem').value],
+      ['gpsLocation',  state.gpsCoords ? `${state.gpsCoords.lat} ${state.gpsCoords.lon}` : ''],
+      ['location',     document.getElementById('location').value],
+      ['licensePlate', document.getElementById('licensePlate').value],
+      ['scooterId',    document.getElementById('scooterId').value],
+      ['description',  document.getElementById('description').value],
+    ];
+
+    const boundary = '----ScooterMelderBoundary' + Math.random().toString(36).slice(2);
+    const enc = new TextEncoder();
+    const parts = [];
+
+    // Text fields
+    for (const [name, value] of fields) {
+      parts.push(enc.encode(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`
+      ));
+    }
+
+    // File field
+    const imageBytes = new Uint8Array(await imageBlob.arrayBuffer());
+    parts.push(enc.encode(
+      `--${boundary}\r\nContent-Disposition: form-data; name="upload"; filename="report.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`
+    ));
+    parts.push(imageBytes);
+    parts.push(enc.encode(`\r\n--${boundary}--\r\n`));
+
+    // Concatenate all parts into one Uint8Array
+    const totalLen = parts.reduce((n, p) => n + p.length, 0);
+    const body = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const p of parts) { body.set(p, offset); offset += p.length; }
+
+    const headers = { 'Content-Type': `multipart/form-data; boundary=${boundary}` };
+    if (state.csrfToken) headers['X-CSRF-TOKEN'] = state.csrfToken;
+
+    const res = await fetch('/api/submit', {
+      method: 'POST',
+      body: body.buffer,
+      credentials: 'include',
+      redirect: 'follow',
+      headers,
+    });
+
+    // 2xx = direct success, 3xx = Laravel redirect to /confirmation (also success)
+    if (res.ok || res.redirected || (res.status >= 300 && res.status < 400)) {
+      document.getElementById('formArea').style.display = 'none';
+      document.getElementById('successScreen').style.display = 'block';
+      document.querySelector('.capture-bar').style.display = 'none';
+      document.getElementById('previews').style.display = 'none';
+      document.getElementById('mergedPreviewContainer').style.display = 'none';
+    } else {
+      throw new Error(`HTTP ${res.status}`);
+    }
+  } catch(e) {
+    console.error(e);
+    toast('Fehler beim Senden. Bitte erneut versuchen.', 'error', 5000);
+    btn.disabled = false;
+    btn.textContent = 'Meldung abschicken';
+  }
+}
+
+function resetForm() {
+  state.parkingImage = null;
+  state.qrImage = null;
+  state.gpsCoords = null;
+  document.getElementById('parkingInput').value = '';
+  document.getElementById('qrInput').value = '';
+  document.getElementById('parkingBtn').classList.remove('has-content');
+  document.getElementById('qrBtn').classList.remove('has-content');
+  document.getElementById('parkingBtnLabel').textContent = 'Foto aufnehmen';
+  document.getElementById('qrBtnLabel').textContent = 'Fahrzeug-ID scannen';
+  document.getElementById('previews').innerHTML = '';
+  document.getElementById('mergedPreviewContainer').style.display = 'none';
+  document.getElementById('city').value = '';
+  document.getElementById('company').innerHTML = '<option value="">Zuerst Stadt wählen</option>';
+  document.getElementById('company').disabled = true;
+  document.getElementById('scooterId').value = '';
+  document.getElementById('licensePlate').value = '';
+  document.getElementById('description').value = '';
+  document.getElementById('location').value = '';
+  document.getElementById('gpsStatus').textContent = '';
+  document.getElementById('gpsBtnIcon').textContent = '📍';
+  document.getElementById('gpsBtnLabel').textContent = 'Aktuellen Standort abrufen';
+  document.getElementById('gpsCapBtn').disabled = false;
+  document.getElementById('gpsHint').textContent = '💡 GPS aus Foto-EXIF funktioniert nur bei direkt mit der Kamera aufgenommenen Bildern. Über Google Fotos heruntergeladene Bilder verlieren die GPS-Daten.';
+  document.getElementById('cityHint').textContent = '';
+  document.getElementById('labelPhotoWrap').style.display = 'none';
+  resetCrop();
+  dismissPlatePrompt();
+  document.getElementById('ocrStatus').style.display = 'none';
+  document.getElementById('ocrOverlay').style.display = 'none';
+  document.getElementById('formArea').style.display = 'block';
+  document.getElementById('successScreen').style.display = 'none';
+  document.querySelector('.capture-bar').style.display = 'grid';
+  document.getElementById('previews').style.display = 'flex';
+  document.getElementById('submitBtn').disabled = false;
+  document.getElementById('submitBtn').textContent = 'Meldung abschicken';
+}
+
+// ── Init ──
+fetchCSRFViaProxy();
+</script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+# Cloudflare Pages does not support proxying to external URLs in _redirects.
+# Use _worker.js instead (included in this deployment).
