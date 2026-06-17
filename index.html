@@ -826,7 +826,7 @@ const COMPANIES = {"1":[{"id":"5","name":"Lime"},{"id":"6","name":"Voi"}],"2":[{
 // ═══════════════════════════════════════════════════════════════
 async function fetchCSRFViaProxy() {
   try {
-    const res = await fetch('/api/', { credentials: 'include' });
+    const res = await fetch('/api/', { credentials: 'include', cache: 'no-store' });
     const html = await res.text();
     const m = html.match(/name="csrf-token" content="([^"]+)"/);
     if (m) { state.csrfToken = m[1]; console.debug('CSRF token fetched via proxy'); }
@@ -1585,7 +1585,7 @@ async function submitReport() {
       method: 'POST',
       body: body.buffer,
       credentials: 'include',
-      redirect: 'follow',
+      redirect: 'manual',
       headers,
     });
 

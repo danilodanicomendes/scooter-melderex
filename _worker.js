@@ -1,45 +1,62 @@
 /**
  * Cloudflare Pages Worker — proxy /api/* → https://scooter-melder.de/*
+ *
+ * Key challenge: Laravel uses two cookies for CSRF:
+ *   - XSRF-TOKEN (readable by JS)
+ *   - scooter_melderde_session (HttpOnly)
+ * Both are set with Domain=scooter-melder.de, so the browser ignores them
+ * when served from pages.dev. We rewrite Set-Cookie headers to remove the
+ * Domain attribute so the browser stores them under our domain instead.
  */
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
     if (url.pathname.startsWith('/api/')) {
-      // Strip /api prefix: /api/submit → /submit, /api/getCompanies → /getCompanies
-      const targetPath = url.pathname.slice('/api'.length);
+      const targetPath = url.pathname.slice('/api'.length) || '/';
       const targetUrl  = 'https://scooter-melder.de' + targetPath + url.search;
 
-      const headers = new Headers(request.headers);
-      headers.set('Host', 'scooter-melder.de');
-      headers.set('Origin', 'https://scooter-melder.de');
-      headers.set('Referer', 'https://scooter-melder.de/');
+      // Forward request headers, spoof origin so Laravel accepts us
+      const reqHeaders = new Headers(request.headers);
+      reqHeaders.set('Host',    'scooter-melder.de');
+      reqHeaders.set('Origin',  'https://scooter-melder.de');
+      reqHeaders.set('Referer', 'https://scooter-melder.de/');
 
-      const proxyRequest = new Request(targetUrl, {
-        method:  request.method,
-        headers: headers,
-        body:    request.method !== 'GET' && request.method !== 'HEAD'
-                   ? request.body
-                   : undefined,
-        // Don't follow redirects — return the redirect response as-is.
-        // The /submit endpoint redirects to /confirmation on success (302).
-        // We treat any 3xx or 2xx as success on the client side.
-        redirect: 'manual',
+      const proxyReq = new Request(targetUrl, {
+        method:   request.method,
+        headers:  reqHeaders,
+        body:     ['GET','HEAD'].includes(request.method) ? undefined : request.body,
+        redirect: 'manual', // return 302 as-is; client treats it as success
       });
 
-      const response = await fetch(proxyRequest);
+      const response = await fetch(proxyReq);
 
-      const responseHeaders = new Headers(response.headers);
-      responseHeaders.set('Access-Control-Allow-Origin', '*');
-      responseHeaders.set('Access-Control-Allow-Credentials', 'true');
+      // Build response headers — rewrite Set-Cookie to remove Domain restriction
+      const resHeaders = new Headers();
+
+      for (const [key, value] of response.headers.entries()) {
+        if (key.toLowerCase() === 'set-cookie') {
+          // Strip Domain=..., SameSite=Strict/Lax (replace with None), add Secure
+          const rewritten = value
+            .replace(/;\s*Domain=[^;]*/gi, '')
+            .replace(/;\s*SameSite=\w+/gi, '; SameSite=None')
+            .replace(/;\s*Secure/gi, '')   // remove first, then re-add once
+            + '; Secure';
+          resHeaders.append('Set-Cookie', rewritten);
+        } else {
+          resHeaders.append(key, value);
+        }
+      }
+
+      resHeaders.set('Access-Control-Allow-Origin',      request.headers.get('Origin') || '*');
+      resHeaders.set('Access-Control-Allow-Credentials', 'true');
 
       return new Response(response.body, {
         status:  response.status,
-        headers: responseHeaders,
+        headers: resHeaders,
       });
     }
 
-    // Serve static assets (index.html etc.)
     return env.ASSETS.fetch(request);
   },
 };
